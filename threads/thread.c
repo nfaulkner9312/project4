@@ -136,10 +136,8 @@ thread_tick (void)
     kernel_ticks++;
 
   /* Enforce preemption. */
-  /*
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
-    */
 }
 
 /* Prints thread statistics. */
@@ -223,6 +221,21 @@ thread_block (void)
   schedule ();
 }
 
+/* list order function based on priority added for poject 4 */
+bool pri_less_func(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+    /* get the threads corresponding to list elements a and b */
+    struct thread *thread_a = list_entry(a, struct thread, elem);
+    struct thread *thread_b = list_entry(b, struct thread, elem);
+
+    /* detemine which thread has the greater priority */
+    if (thread_a->priority > thread_b->priority) {
+        return true;
+    } else {
+        return false;
+    }
+
+}
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -235,15 +248,13 @@ void
 thread_unblock (struct thread *t) 
 {
   enum intr_level old_level;
-
   ASSERT (is_thread (t));
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  
-  /* need to change this to a list ordered by priority */ 
-  list_push_back (&ready_list, &t->elem);
-  /* change needed for project 4 */
+ 
+  /* changed for project 4 so list is ordered by priority */ 
+  list_insert_ordered(&ready_list, &t->elem, (list_less_func *) &pri_less_func, NULL);
 
   t->status = THREAD_READY;
   intr_set_level (old_level);
@@ -316,7 +327,8 @@ thread_yield (void)
   old_level = intr_disable ();
   if (cur != idle_thread) { 
       /* this needs to be added in order of its priority */
-      list_push_back (&ready_list, &cur->elem);
+      // list_push_back (&ready_list, &cur->elem);
+      list_insert_ordered(&ready_list, &cur->elem, (list_less_func *) &pri_less_func, NULL);
       /* change needed for project 4 */
   }
   cur->status = THREAD_READY;
