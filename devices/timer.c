@@ -236,6 +236,8 @@ static void timer_interrupt (struct intr_frame *args UNUSED) {
         e = list_begin(&sleep_list);
         t = list_entry(e, struct thread, elem);
     }
+
+    check_highest_priority();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

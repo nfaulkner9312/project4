@@ -72,6 +72,7 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+bool pri_less_func(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED); 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -201,6 +202,10 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+
+  enum intr_level prev_level = intr_disable();
+  check_highest_priority();
+  intr_set_level(prev_level);
 
   return tid;
 }
@@ -356,16 +361,18 @@ thread_foreach (thread_action_func *func, void *aux)
 /* This stuff needs to be implemented/changed for project 4 to handle priority and mlfq scheduling*/
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
-void
-thread_set_priority (int new_priority) 
-{
-  thread_current ()->priority = new_priority;
+void thread_set_priority (int new_priority) {
+    
+    enum intr_level prev_level = intr_disable();
+
+    thread_current()->priority = new_priority; 
+    check_highest_priority();
+
+    intr_set_level(prev_level);
 }
 
 /* Returns the current thread's priority. */
-int
-thread_get_priority (void) 
-{
+int thread_get_priority (void) {
   return thread_current ()->priority;
 }
 
@@ -608,3 +615,23 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+/* yield current thread if it is not still highest priority */
+void check_highest_priority(void) {
+   
+   if (!list_empty(&ready_list)) {
+       struct list_elem *e = list_front(&ready_list);
+       struct thread *t = list_entry(e, struct thread, elem);
+       
+       /* check if current thread has a lower priority than the first thread in the ready list */ 
+       struct thread *cur = thread_current();
+       if (cur->priority < t->priority) {
+           /* if we are currently in an interrupt we need yield on return of the interrupt instead */
+           if (intr_context()) {
+               intr_yield_on_return();
+           } else {
+               thread_yield();
+           }
+       }
+   }
+}
