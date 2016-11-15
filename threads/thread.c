@@ -22,6 +22,7 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
+   /* for project 4 this list needs to be ordered by priority */
 static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
@@ -135,8 +136,10 @@ thread_tick (void)
     kernel_ticks++;
 
   /* Enforce preemption. */
+  /*
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
+    */
 }
 
 /* Prints thread statistics. */
@@ -237,7 +240,11 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+  
+  /* need to change this to a list ordered by priority */ 
   list_push_back (&ready_list, &t->elem);
+  /* change needed for project 4 */
+
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -307,8 +314,11 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+  if (cur != idle_thread) { 
+      /* this needs to be added in order of its priority */
+      list_push_back (&ready_list, &cur->elem);
+      /* change needed for project 4 */
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -330,6 +340,8 @@ thread_foreach (thread_action_func *func, void *aux)
       func (t, aux);
     }
 }
+
+/* This stuff needs to be implemented/changed for project 4 to handle priority and mlfq scheduling*/
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
@@ -467,6 +479,8 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+
+  /* may need to initialize fields added to the threads struct for project 4 */
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

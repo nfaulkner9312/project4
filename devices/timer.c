@@ -30,6 +30,9 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+/* a list of sleeping threads */
+static struct list sleep_list;
+
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
@@ -37,6 +40,8 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  /* initialize list of sleeping threads */
+  list_init(&sleep_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -84,16 +89,58 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+bool ticks_less_func (const struct list_elem *a, const struct list_elem *b, void *aux) {
+
+    /* get the threads corresponding to list elements a and b */
+    struct thread *thread_a = list_entry(a, struct thread, elem);
+    struct thread *thread_b = list_entry(b, struct thread, elem);
+
+    /* detemine which thread has few ticks left to sleep */
+    /* true means thread a has less time, false means thread b has less time */
+    if (thread_a->ticks < thread_b->ticks) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
-void
-timer_sleep (int64_t ticks) 
-{
-  int64_t start = timer_ticks ();
+void timer_sleep (int64_t ticks) {
+    int64_t start = timer_ticks ();
 
-  ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+    ASSERT (intr_get_level () == INTR_ON);
+
+    /* i'm not sure if this is something that could happen 
+       but if the number of ticks passed is less than or equal to zero 
+       we don't want to be adding it to the sleep list */
+    if (ticks <= 0) {
+        return;
+    }
+
+    /* Disable interupts just for a second to update the list of sleeping threads */
+    /* this is also a requirement when calling thread_block */
+    enum intr_level prev_level = intr_disable();
+
+    /* update the number of timer ticks at which the thread should awaken */
+    struct thread *cur = thread_current();
+    cur->ticks = timer_ticks() + ticks;
+
+    /* add current thread to the sleep list */
+    /* we want this ordered from soonest to latest time to awake */
+    list_insert_ordered(&sleep_list, &cur->elem, (list_less_func *) &ticks_less_func, NULL);
+    
+    /* put that thread to sleeeeep. zzz sweet dreams */
+    thread_block();
+    /* set interupt priority level back to what is was before we disabled interupts */
+    intr_set_level(prev_level); 
+
+    /*
+    while (timer_elapsed (start) < ticks) {
+        thread_yield ();
+    }
+    */
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -167,11 +214,29 @@ timer_print_stats (void)
 }
 
 /* Timer interrupt handler. */
-static void
-timer_interrupt (struct intr_frame *args UNUSED)
-{
-  ticks++;
-  thread_tick ();
+static void timer_interrupt (struct intr_frame *args UNUSED) {
+    ticks++;
+    thread_tick ();
+
+    /* For project 4 there are a few more thinks we want to do when a timer interupt occurs 
+       1) check if there are any threads that should be done sleeping */ 
+    /*
+    if (thread_mlfqs) {
+        // do mlfqs stuff
+        // will need to disable interupts per documentation
+    }
+    */
+
+    /* wake all threads that have sleep their given number of ticks */
+    struct list_elem *e = list_begin(&sleep_list);
+    struct thread *t = list_entry(e, struct thread, elem);
+    while ((e != list_end(&sleep_list)) && !(ticks < t->ticks)) {
+        /* get thread corresponding to list element */
+        list_remove(e);
+        thread_unblock(t);
+        e = list_begin(&sleep_list);
+        t = list_entry(e, struct thread, elem);
+    }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
