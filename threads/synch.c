@@ -236,8 +236,9 @@ void lock_acquire (struct lock *lock) {
         /* add current thread trying to acquire lock 
            to the list of donors willing to donate priority 
            to the thread holding the lock and blocking everyone */ 
-           
-        list_insert_ordered(&lock->holder->donors, &cur->donor_elem, (list_less_func*) &pri_less_func, NULL);
+        if (!thread_mlfqs) {   
+            list_insert_ordered(&lock->holder->donors, &cur->donor_elem, (list_less_func*) &pri_less_func, NULL);
+        }
     }
     sema_down (&lock->semaphore);
     /* no longer waiting on lock */
@@ -279,28 +280,30 @@ void lock_release (struct lock *lock) {
 
     enum intr_level prev_level = intr_disable();
     lock->holder = NULL;
-   
-    /* priority donation stuff */ 
-    struct thread *cur = thread_current();
-    
-    /* remove all threads waiting on this lock from current threads donors list */
-    struct list_elem *e = list_begin(&cur->donors);
-    while( e != list_end(&cur->donors) ) {
-        struct thread *t = list_entry(e, struct thread, donor_elem);
-        struct list_elem *tmp = list_next(e);
-        if (t->lock_waiting == lock) {
-            list_remove(e);
+  
+    if (!thread_mlfqs) { 
+        /* priority donation stuff */ 
+        struct thread *cur = thread_current();
+        
+        /* remove all threads waiting on this lock from current threads donors list */
+        struct list_elem *e = list_begin(&cur->donors);
+        while( e != list_end(&cur->donors) ) {
+            struct thread *t = list_entry(e, struct thread, donor_elem);
+            struct list_elem *tmp = list_next(e);
+            if (t->lock_waiting == lock) {
+                list_remove(e);
+            }
+            e = tmp;
         }
-        e = tmp;
-    }
 
-    /* need to set thread back to initial priority incase they donated */
-    cur->priority = cur->initial_priority;
+        /* need to set thread back to initial priority incase they donated */
+        cur->priority = cur->initial_priority;
 
-    if (!list_empty(&cur->donors)) {
-        struct thread *t = list_entry(list_front(&cur->donors), struct thread, donor_elem);
-        if(cur->priority < t->priority) {
-            cur->priority = t->priority;
+        if (!list_empty(&cur->donors)) {
+            struct thread *t = list_entry(list_front(&cur->donors), struct thread, donor_elem);
+            if(cur->priority < t->priority) {
+                cur->priority = t->priority;
+            }
         }
     }
      
