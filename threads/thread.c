@@ -61,7 +61,7 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 bool thread_mlfqs;
 bool first_thread;
 
-double load_avg;
+int64_t load_avg;
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -127,7 +127,9 @@ void
 thread_tick (void) 
 {
   struct thread *t = thread_current ();
-
+    if(timer_ticks()%TIMER_FREQUENCY==0){
+        mlfqs_update_load_avg();
+    }
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -138,42 +140,37 @@ thread_tick (void)
   else
     kernel_ticks++;
 
-    if(threads_mlfqs){
+    if(thread_mlfqs){
+    mlfqs_update_recent_cpu();
+    
+    
     /*recalculate all the priorities for every thread based on new values and cpu usage*/
    struct list_elem *e;
     for(e = list_begin (&all_list); e != list_end (&all_list);
         e = list_next(e)){
         struct thread *t = list_entry (e, struct thread, elem);
+        mlfqs_recalculate_recent_cpu(t);
+        if(timer_ticks()%4==0)/*only runs ever 4 timer ticks*/
         mlfqs_priority_update(t);
     }
     e = list_begin (&all_list);
     struct thread *t = list_entry (e, struct thread, elem);
     
-    if(current_thread()->priority < t->priority){
+    if((thread_current() ->priority) < (t->priority)){
         intr_yield_on_return();
     }   
     
-    }
-    
+    } 
     
   /* Enforce preemption. */
-<<<<<<< HEAD
   
-=======
->>>>>>> dbacabcc35de86af15f4871cae0588a3776d65f7
   if (++thread_ticks >= TIME_SLICE)
     {
-    /*if(thread_mlfqs && t->priority>PRI_MIN){ 
-    t->priority--;
-    }*/
     intr_yield_on_return ();
-<<<<<<< HEAD
     }
     
-    }
-=======
+    
 }
->>>>>>> dbacabcc35de86af15f4871cae0588a3776d65f7
 
 /* Prints thread statistics. */
 void
@@ -467,7 +464,7 @@ if(user_ticks%PRIORITY_BOOST_PERIOD==0){
 }*/
 void mlfqs_priority_update(struct thread *t){
 int new_priority;
-new_priority= PRI_MAX - (thread_get_recent_cpu(t)/400)-(nice/2);
+new_priority= PRI_MAX - (t->recent_cpu/400)-(t->nice/2);/* bit of conflicting philosophy in this line*/
 if(new_priority>PRI_MAX)
     new_priority=PRI_MAX;
 if(new_priority<PRI_MIN)
@@ -496,15 +493,40 @@ int
 thread_get_load_avg (void) 
 {
   /* Not yet implemented. */
-  return load_avg*100;
+  return load_avg;
+}
+void mlfqs_update_load_avg()
+{
+int ready_threads=0;
+struct list_elem *e;
+    for(e = list_begin (&ready_list); e != list_end (&ready_list);
+        e = list_next(e)){
+        ready_threads++;
+    }
+/*GET NUMBER OF READY THREADS HERE*/
+load_avg=(59*load_avg+(ready_threads*100))/60;
 }
 
+void mlfqs_update_recent_cpu(){
+
+if(current_thread() != idle_thread){
+current_thread()->recent_cpu++;
+}
+}
+
+void mlfqs_recalculate_recent_cpu(struct thread* t){
+int recent_cpu_f=t->recent_cpu;
+
+t->recent_cpu=(load_avg*2/(load_avg*2+100))*recent_cpu_f+nice*100;
+
+
+}
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
-  return thread_current()->recent_cpu * 100;
+  return thread_current()->recent_cpu ;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
