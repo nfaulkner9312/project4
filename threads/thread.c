@@ -495,7 +495,7 @@ int
 thread_get_load_avg (void) 
 {
   /* Not yet implemented. */
-  return load_avg;
+  return (load_avg*100)>>14;
 }
 void mlfqs_update_load_avg()
 {
