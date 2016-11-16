@@ -30,6 +30,8 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+bool ticks_less_func (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
 /* a list of sleeping threads */
 static struct list sleep_list;
 
@@ -89,7 +91,7 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
-bool ticks_less_func (const struct list_elem *a, const struct list_elem *b, void *aux) {
+bool ticks_less_func (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
 
     /* get the threads corresponding to list elements a and b */
     struct thread *thread_a = list_entry(a, struct thread, elem);
@@ -108,10 +110,7 @@ bool ticks_less_func (const struct list_elem *a, const struct list_elem *b, void
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void timer_sleep (int64_t ticks) {
-    int64_t start = timer_ticks ();
-
     ASSERT (intr_get_level () == INTR_ON);
-
     /* i'm not sure if this is something that could happen 
        but if the number of ticks passed is less than or equal to zero 
        we don't want to be adding it to the sleep list */
@@ -238,6 +237,8 @@ static void timer_interrupt (struct intr_frame *args UNUSED) {
         e = list_begin(&sleep_list);
         t = list_entry(e, struct thread, elem);
     }
+
+    check_highest_priority();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
