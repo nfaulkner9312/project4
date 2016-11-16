@@ -27,7 +27,7 @@ static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
-static struct list all_list;
+//static struct list all_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -50,7 +50,7 @@ struct kernel_thread_frame
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
-
+#define PRIORITY_BOOST_PERIOD 4000
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
@@ -59,7 +59,9 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+bool first_thread;
 
+double load_avg;
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -96,6 +98,7 @@ thread_init (void)
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
+    first_thread=true;
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
@@ -135,12 +138,35 @@ thread_tick (void)
   else
     kernel_ticks++;
 
+    if(threads_mlfqs){
+    /*recalculate all the priorities for every thread based on new values and cpu usage*/
+   struct list_elem *e;
+    for(e = list_begin (&all_list); e != list_end (&all_list);
+        e = list_next(e)){
+        struct thread *t = list_entry (e, struct thread, elem);
+        mlfqs_priority_update(t);
+    }
+    e = list_begin (&all_list);
+    struct thread *t = list_entry (e, struct thread, elem);
+    
+    if(current_thread()->priority < t->priority){
+        intr_yield_on_return();
+    }   
+    
+    }
+    
+    
   /* Enforce preemption. */
-  /*
+  
   if (++thread_ticks >= TIME_SLICE)
+    {
+    /*if(thread_mlfqs && t->priority>PRI_MIN){ 
+    t->priority--;
+    }*/
     intr_yield_on_return ();
-    */
-}
+    }
+    
+    }
 
 /* Prints thread statistics. */
 void
@@ -356,12 +382,35 @@ thread_get_priority (void)
 {
   return thread_current ()->priority;
 }
+/*boosts priority of all threads to PRI_MAX after a set period of timer ticks, specified by variable 
+void
+threads_priority_boost(void){
+if(user_ticks%PRIORITY_BOOST_PERIOD==0){
+    struct list_elem *e;
+    for(e = list_begin (&all_list); e != list_end (&all_list);
+        e = list_next(e)){
+        struct thread *t = list_entry (e, struct thread, elem);
+        t->priority=PRI_MAX;
+    }
 
+}
+}*/
+void mlfqs_priority_update(struct thread *t){
+int new_priority;
+new_priority= PRI_MAX - (thread_get_recent_cpu(t)/400)-(nice/2);
+if(new_priority>PRI_MAX)
+    new_priority=PRI_MAX;
+if(new_priority<PRI_MIN)
+    new_priority=PRI_MIN;
+t->priority=new_priority;
+
+}
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice) 
 {
   /* Not yet implemented. */
+    thread_current() ->nice=nice;
 }
 
 /* Returns the current thread's nice value. */
@@ -369,7 +418,7 @@ int
 thread_get_nice (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return thread_current() ->nice;
 }
 
 /* Returns 100 times the system load average. */
@@ -377,7 +426,7 @@ int
 thread_get_load_avg (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return load_avg*100;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -385,9 +434,9 @@ int
 thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
-  return 0;
+  return thread_current()->recent_cpu * 100;
 }
-
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -475,7 +524,14 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-
+    if(first_thread){
+        t->nice = 0;
+        t->recent_cpu = 0;
+        first_thread=false;
+    }else{
+  t->nice = thread_current()->nice;
+  t->recent_cpu = thread_current()->recent_cpu;
+    }
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);

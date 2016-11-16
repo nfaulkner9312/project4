@@ -220,12 +220,13 @@ static void timer_interrupt (struct intr_frame *args UNUSED) {
 
     /* For project 4 there are a few more thinks we want to do when a timer interupt occurs 
        1) check if there are any threads that should be done sleeping */ 
-    /*
+    
     if (thread_mlfqs) {
         // do mlfqs stuff
         // will need to disable interupts per documentation
-    }
-    */
+        // this is where threads' priority is recalculated
+        }
+    
 
     /* wake all threads that have sleep their given number of ticks */
     struct list_elem *e = list_begin(&sleep_list);

@@ -13,7 +13,7 @@ enum thread_status
     THREAD_BLOCKED,     /* Waiting for an event to trigger. */
     THREAD_DYING        /* About to be destroyed. */
   };
-
+static struct list all_list;
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
@@ -95,6 +95,9 @@ struct thread
 
     /* number of ticks at which the thread should stop sleeping */
     int64_t ticks;
+    int32_t nice;
+    int64_t recent_cpu;
+    
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -112,7 +115,7 @@ extern bool thread_mlfqs;
 
 void thread_init (void);
 void thread_start (void);
-
+void threads_boost_priority(void);
 void thread_tick (void);
 void thread_print_stats (void);
 
