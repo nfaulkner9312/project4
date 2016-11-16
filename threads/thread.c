@@ -364,7 +364,50 @@ void thread_set_priority (int new_priority) {
     
     enum intr_level prev_level = intr_disable();
 
-    thread_current()->priority = new_priority; 
+
+    struct thread *cur = thread_current();
+    int prev_priority = cur->priority;
+
+    // see to new prirority
+    cur->initial_priority = new_priority;
+    cur->priority = new_priority;
+
+    // make sure we are not donating
+    if (!list_empty(&cur->donors)) {
+        struct thread *t = list_entry(list_front(&cur->donors), struct thread, donor_elem);
+        if(cur->priority < t->priority) {
+            cur->priority = t->priority;
+        }
+    }
+   
+    if (prev_priority > cur->priority) { 
+        /* donate prirority */
+        struct thread *t = thread_current();
+        struct lock *alock = t->lock_waiting;
+        int count = 0;
+        
+        while (alock) {
+            if (count > 8) {
+                // if we've nested down more than 8 times than forget it 
+                break;
+            } else if (alock->holder == NULL) {
+                // if no thread is holding the lock then we're all good 
+                break;
+            } else if (t->priority <= alock->holder->priority) {
+                // if the threads priority is less than the thread with the locks than donating won't help 
+                break;
+            }
+
+            // donate that priority 
+            alock->holder->priority = t->priority;
+            t = alock->holder;
+            alock = t->lock_waiting;
+            
+            count++;
+        }
+    }
+    
+    // make sure it is still the highest 
     check_highest_priority();
 
     intr_set_level(prev_level);
