@@ -72,7 +72,6 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-bool pri_less_func(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED); 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -500,6 +499,10 @@ init_thread (struct thread *t, const char *name, int priority)
   intr_set_level (old_level);
 
   /* may need to initialize fields added to the threads struct for project 4 */
+  list_init(&t->donors);
+  t->initial_priority = priority;
+  t->lock_waiting = NULL;
+
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -635,3 +638,7 @@ void check_highest_priority(void) {
        }
    }
 }
+
+
+
+
