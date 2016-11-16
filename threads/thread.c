@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -27,7 +28,7 @@ static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
-//static struct list all_list;
+static struct list all_list;
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -61,7 +62,7 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 bool thread_mlfqs;
 bool first_thread;
 
-int64_t load_avg;
+int32_t load_avg;
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -95,7 +96,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-
+  load_avg=0;
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
     first_thread=true;
@@ -127,7 +128,7 @@ void
 thread_tick (void) 
 {
   struct thread *t = thread_current ();
-    if(timer_ticks()%TIMER_FREQUENCY==0){
+    if(timer_ticks()%TIMER_FREQ==0){/*update load_avg every second*/
         mlfqs_update_load_avg();
     }
   /* Update statistics. */
@@ -141,7 +142,7 @@ thread_tick (void)
     kernel_ticks++;
 
     if(thread_mlfqs){
-    mlfqs_update_recent_cpu();
+    mlfqs_update_recent_cpu();/*increment recent_cpu for running thread*/
     
     
     /*recalculate all the priorities for every thread based on new values and cpu usage*/
@@ -153,7 +154,7 @@ thread_tick (void)
         if(timer_ticks()%4==0)/*only runs ever 4 timer ticks*/
         mlfqs_priority_update(t);
     }
-    e = list_begin (&all_list);
+    e = list_begin (&ready_list);
     struct thread *t = list_entry (e, struct thread, elem);
     
     if((thread_current() ->priority) < (t->priority)){
@@ -499,26 +500,34 @@ thread_get_load_avg (void)
 void mlfqs_update_load_avg()
 {
 int ready_threads=0;
+if(thread_current() != idle_thread)
+    ready_threads++;
+
 struct list_elem *e;
     for(e = list_begin (&ready_list); e != list_end (&ready_list);
         e = list_next(e)){
         ready_threads++;
     }
 /*GET NUMBER OF READY THREADS HERE*/
-load_avg=(59*load_avg+(ready_threads*100))/60;
+load_avg=(59*load_avg+(ready_threads<<14));
+if(load_avg%(60<<14)>=(30<<14)){
+load_avg+=(30<<14);
+}
+load_avg/=60;
+printf("%d\n",load_avg);
 }
 
 void mlfqs_update_recent_cpu(){
 
-if(current_thread() != idle_thread){
-current_thread()->recent_cpu++;
+if(thread_current() != idle_thread){
+thread_current()->recent_cpu+=(1<<14);
 }
 }
 
 void mlfqs_recalculate_recent_cpu(struct thread* t){
 int recent_cpu_f=t->recent_cpu;
 
-t->recent_cpu=(load_avg*2/(load_avg*2+100))*recent_cpu_f+nice*100;
+t->recent_cpu=(load_avg*2/(load_avg*2+(1<<14)))*recent_cpu_f+(t->nice<<14);
 
 
 }
@@ -527,7 +536,11 @@ int
 thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
-  return thread_current()->recent_cpu ;
+  int return_val=(thread_current()->recent_cpu * 100) ;
+    if(return_val%(100<<14) >=5<<14)
+    return (return_val>>14)+1;
+    else
+    return return_val>>14;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
